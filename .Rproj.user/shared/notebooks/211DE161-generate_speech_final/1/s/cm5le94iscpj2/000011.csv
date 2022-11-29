@@ -1,0 +1,29 @@
+"0","speeches_w_emotion_score <- read_delim(""data/speeches_w_emotion_score.csv"", 
+    delim = "";"", escape_double = FALSE, col_types = cols(...1 = col_skip()), 
+    trim_ws = TRUE) %>% 
+    filter(
+      !is.na(year),
+      !is.na(speech),
+      !is.na(emotion_score)
+    ) %>% 
+    separate(date, into = c(""day"", ""month"", ""year""), sep = "" "") %>% 
+    mutate(month = match(month, month.name)) %>% 
+    mutate(date = as.Date(paste(year, month, day,sep=""-"")), ""%Y-%m-%d"") %>% 
+    select(-'""%Y-%m-%d""') %>% 
+    select(speech_id,
+           speaker,
+           speaker_id,
+           date,
+           day,
+           month,
+           year,
+           title,
+           speech,
+           lang,
+           meta_tags,
+           link,
+           everything()) %>% 
+  mutate(speaker_id = as.character(speaker_id))
+"
+"2","New names:"
+"2","Warning: Expected 3 pieces. Missing pieces filled with `NA` in 11 rows [170, 177, 186, 559, 929, 941, 954, 1014, 1211, 1505, 1607]."

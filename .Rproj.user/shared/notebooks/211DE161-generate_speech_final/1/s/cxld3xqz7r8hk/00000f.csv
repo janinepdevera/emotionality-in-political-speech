@@ -1,0 +1,12 @@
+"0","# join all the data sets
+speeches_full <- speeches_w_emotion_score %>% 
+  left_join(select(speaker_party_matching, -speaker), by = c(""speaker_id"" = ""speaker_id""))
+"
+"1","[1m[33mError[39m in `left_join()`:[22m
+[38;5;252m[33m![38;5;252m Can't join on `x$speaker_id` x `y$speaker_id` because of incompatible types.
+[36mℹ[38;5;252m `x$speaker_id` is of type <double>>.
+[36mℹ[38;5;252m `y$speaker_id` is of type <character>>.[39m
+Backtrace:
+[90m 1. [39mspeeches_w_emotion_score %>% ...
+[90m 3. [39m[1m[94mdplyr:::left_join.data.frame([39m[22m., select(speaker_party_matching, -speaker), by = c(speaker_id = ""speaker_id"")[1m[94m)[39m[22m
+"
