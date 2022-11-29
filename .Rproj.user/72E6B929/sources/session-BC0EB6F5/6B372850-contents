@@ -1,0 +1,27 @@
+---
+title: "analysis_and_plots"
+author: "Benedikt Ströbl"
+date: "2022-11-29"
+output: html_document
+---
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+speeches_w_emotion_score <- read_delim("data/speeches_w_emotion_score.csv", 
+    delim = ";", escape_double = FALSE, col_types = cols(...1 = col_skip()), 
+    trim_ws = TRUE)
+
+```
+
+```{r}
+speeches_w_emotion_score %>% 
+  filter(speaker %in% c("Ursula von der Leyen", "Margrethe Vestager", "Frans Timmermans")) %>% 
+  ggplot(aes(
+    x = year,
+    y = emotion_score_own_embedding)) +
+  geom_boxplot()
+```
+
