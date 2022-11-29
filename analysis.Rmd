@@ -1,0 +1,241 @@
+---
+title: "analysis"
+author: "Benedikt Ströbl"
+date: "2022-11-29"
+output: html_document
+---
+```{r}
+require(tidyverse)
+require(gtools)
+require(gtable)
+require(gt)
+require(gtExtras)
+require(gtsummary)
+require(ggforce)
+require(stargazer)
+require(modelsummary)
+require(showtext)
+font_add_google("Roboto Condensed", "Roboto Condensed")
+showtext_auto()
+source("ggplot_themes.R")
+
+speeches <- read_delim("data/speeches_final.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE, show_col_types = F) %>% 
+  mutate(
+    lr_cat_5 = quantcut(lrgen),
+    lr_cat_5 = case_when(
+      lr_cat_5 == "[3.21,4.46]" ~ "left",
+      lr_cat_5 == "(4.46,5.86]" ~ "center_left",
+      lr_cat_5 == "(5.86,6.91]" ~ "center_right",
+      lr_cat_5 == "(6.91,8.33]" ~ "right",
+      TRUE ~ "independ."
+    ),
+    lr_cat_2 = case_when(
+      lrgen < 3 ~ "left",
+      lrgen >= 7 ~ "right",
+      TRUE ~ "Other"
+    )
+  )
+
+speeches %>% 
+  glimpse()
+```
+
+## General Time Series
+
+### Count Speeches over the years
+
+```{r}
+speeches %>% 
+  group_by(
+    date = lubridate::floor_date(date, 'bimonthly')
+  ) %>% 
+  summarise(
+    count = n()
+  ) %>% 
+ ggplot(aes(
+    y = count,
+    x = date
+  )) + 
+  geom_line(color = "darkblue", size = .7) + 
+  labs(
+    title = "Number of Speeches Held by the Current EU College Members",
+    subtitle = "Count of recorded public appearance be two-month period (bimonthly)",
+    caption = "Source: Own Illustration",
+    x = "Time",
+    y = "Nr. of Speeches"
+  ) +
+  theme_custom()
+```
+
+### Count of speeches during 2020
+
+```{r}
+## General Time Series
+
+```{r}
+speeches %>% 
+  filter(year == 2020) %>% 
+  group_by(
+    date = lubridate::floor_date(date, 'weekly')
+  ) %>% 
+  summarise(
+    count = n()
+  ) %>% 
+ ggplot(aes(
+    y = count,
+    x = date
+  )) + 
+  geom_line(color = "darkblue", size = .7) + 
+  labs(
+    title = "Number of Speeches Held by the Current EU College Members",
+    subtitle = "Count of recorded public appearance be two-month period (bimonthly)",
+    caption = "Source: Own Illustration",
+    x = "Time",
+    y = "Nr. of Speeches"
+  ) +
+  theme_custom()
+```
+
+### Cognitive vs. Affective Language over the years
+
+```{r}
+speeches %>% 
+  group_by(
+    date = lubridate::floor_date(date, 'month')
+  ) %>% 
+  
+  select(date, 
+         emotion_score, 
+         emotion_score_own_embedding, 
+         emotion_score_own_embedding_tfidf,
+         emotion_score_tfidf,
+         affect_score,
+         affect_score_own_embedding,
+         affect_score_own_embedding_tfidf,
+         affect_score_tfidf,
+         cognition_score,
+         cognition_score_own_embedding,
+         cognition_score_own_embedding_tfidf,
+         cognition_score_tfidf)  %>% 
+  summarize_all(
+    mean
+  ) %>%  
+  ungroup() %>% 
+  pivot_longer(-date, names_to = "measure", values_to = "value") %>% 
+  filter(measure %in% c('cognition_score_own_embedding_tfidf', 'affect_score_own_embedding_tfidf')) %>% 
+  ggplot(aes(
+    x = date,
+    y = value,
+    color = measure
+  )) +
+  geom_line() +
+  labs(
+    title="Cognitive/Affective Language by the EU Commission",
+    subtitle = "How did the current college members of the EU Commission communicate?",
+    caption = "Source: Own Illustration",
+    x = "Time",
+    y = "Score",
+    color = "Measure"
+    
+  ) + 
+  scale_color_brewer(palette = "Dark2") +
+  theme_custom()
+```
+
+### Focus: Juli 2021: Three Green Deel Proposals and Massacre Speech by von der Leyen
+
+```{r}
+speeches %>% 
+  filter(
+    year == 2021
+  ) %>% 
+  group_by(
+    date = lubridate::floor_date(date, 'month')
+  ) %>% 
+  
+  select(date, 
+         emotion_score, 
+         emotion_score_own_embedding, 
+         emotion_score_own_embedding_tfidf,
+         emotion_score_tfidf,
+         affect_score,
+         affect_score_own_embedding,
+         affect_score_own_embedding_tfidf,
+         affect_score_tfidf,
+         cognition_score,
+         cognition_score_own_embedding,
+         cognition_score_own_embedding_tfidf,
+         cognition_score_tfidf)  %>% 
+  summarize_all(
+    mean
+  ) %>%  
+  ungroup() %>% 
+  pivot_longer(-date, names_to = "measure", values_to = "value") %>% 
+  filter(measure %in% c('cognition_score_own_embedding_tfidf', 'affect_score_own_embedding_tfidf')) %>% 
+  ggplot(aes(
+    x = date,
+    y = value,
+    color = measure
+  )) +
+  geom_line() +
+  theme_custom()
+```
+
+### Male Female distribution
+
+```{r}
+speeches %>% 
+  ggplot(aes(
+    y = cognition_score_tfidf,
+    x = sex,
+    color = sex
+  )) + 
+  geom_violin(aes(color = sex), size = 1, alpha = .5) +
+  geom_jitter(alpha = .25, width = .3) +
+  geom_sina(alpha = .25) +
+    geom_boxplot(outlier.alpha = 0, coef = 0,
+                 color = "gray40", width = .2) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  labs(
+    x = "Gender",
+    y = 'Score',
+    title = "Cognitive/Rational Language Across Sex",
+    subtitle = "Distribution of all speeches' cognition score held by male/female commissioners in data set",
+    caption = "Data source: Own Illustration"
+  ) +
+  coord_flip() +
+  theme_custom()
+
+```
+
+
+## Regression Model (Gender, Ideologoy, EU Position)
+
+```{r}
+sex <- lm(emotion_score_own_embedding~sex, data=speeches)
+
+eu_pos <-lm(emotion_score_own_embedding~eu_position, data=speeches)
+
+lr <- lm(emotion_score_own_embedding~lrgen, data=speeches)
+
+complete <- lm(emotion_score_own_embedding~ sex + eu_position + lrgen, data=speeches)
+
+
+stargazer(sex, eu_pos, lr, complete, out = "regression.png",
+          dep.var.caption = "Emotionality Score",
+          dep.var.labels = "")
+```
+
+
+```{r}
+speeches %>%
+  ggplot(aes(
+    x = sex,
+    y = emotion_score_tfidf
+  )) +
+  geom_boxplot()
+```
+
+
+

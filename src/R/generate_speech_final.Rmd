@@ -4,8 +4,10 @@ author: "Benedikt Ströbl"
 date: "2022-11-29"
 output: html_document
 ---
-```{r}
+```{r setup}
+knitr::opts_knit$set(root.dir = 'C:/Users/Bened/Documents/Git/Emotionality-in-Political-Speech-of-the-EU-Commission')
 library(tidyverse)
+library(gtools)
 ```
 
 
@@ -35,7 +37,7 @@ speeches_w_emotion_score <- read_delim("data/speeches_w_emotion_score.csv",
            meta_tags,
            link,
            everything()) %>% 
-  mutate(speaker_id = as.character(speaker_id))
+    mutate(speaker_id = as.character(speaker_id))
 
 ```
 

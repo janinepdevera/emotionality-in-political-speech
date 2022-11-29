@@ -1,13 +1,4 @@
-"0","# merge parties to commissioners
-speaker_party_matching <- read_excel(""data/ChapelHillExpertSurvey/speaker_party_matching.xlsx"") %>% 
-  left_join(chapelhill_expert_survey,
-            by = c(""party_id"" = ""party_id""))
-"
-"1","[1m[33mError[39m in `left_join()`:[22m
-[38;5;252m[33m![38;5;252m Can't join on `x$party_id` x `y$party_id` because of incompatible types.
-[36mℹ[38;5;252m `x$party_id` is of type <character>>.
-[36mℹ[38;5;252m `y$party_id` is of type <double>>.[39m
-Backtrace:
-[90m 1. [39m... %>% ...
-[90m 3. [39m[1m[94mdplyr:::left_join.data.frame([39m[22m., chapelhill_expert_survey, by = c(party_id = ""party_id"")[1m[94m)[39m[22m
-"
+"0","# merge parties to commissioners"
+"0","speaker_party_matching <- read_excel(""data/ChapelHillExpertSurvey/speaker_party_matching.xlsx"") %>% "
+"0","  left_join(chapelhill_expert_survey,"
+"0","            by = c(""party_id"" = ""party_id""))"

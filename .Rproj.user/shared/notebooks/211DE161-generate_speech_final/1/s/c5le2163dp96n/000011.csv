@@ -1,6 +1,0 @@
-"0","speeches_final %>% 
-  write.csv(""data/speeches_final.csv"", delim = "";"")
-"
-"2","Error in utils::write.table(., ""data/speeches_final.csv"", delim = "";"",  : 
-  unused argument (delim = "";"")
-"
