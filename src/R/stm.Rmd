@@ -40,16 +40,19 @@ knitr::opts_chunk$set(echo = TRUE,
 ```{r setup, include = T}
 # loading packages
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(manifestoR, quanteda, tidyr, purrr, ggplot2, 
+pacman::p_load(quanteda, tidyr, purrr, ggplot2, 
                tidytext, httr, rvest, readr, xml2, reshape2,
                stringr, stringi, dplyr, tibble, lexicon,
-               NMF, topicmodels, LDAvis, stm)
+               NMF, topicmodels, LDAvis, stm, readxl, zoo, scales)
 ```
 
 ```{r}
 dir <- "D:/Desktop/02 Text as Data/Emotionality-in-Political-Speech-of-the-EU-Commission"
 
-raw <- read.csv(file.path(dir, "data/EUCommissionSpeeches/speeches_unique_eng.csv"), sep=";") 
+raw <- read.csv(file.path(dir, "data/speeches_final.csv"), sep=";") 
+
+
+source(file.path(dir,"ggplot_themes.R"))
 ```
 
 
@@ -74,6 +77,13 @@ df %>%
  summarise(counts = n()) %>%
  arrange(desc(counts))
 
+```
+
+```{r}
+comm <- read_excel(file.path(dir, "data/EUCommissionSpeeches/commissioners_labels.xlsx")) %>%
+          select(-speaker)
+df <- left_join(df, comm, by = "speaker_id") %>%
+  mutate(plot_lbl = paste0(speaker_lbl, " (", committee_lbl, ")"))
 
 ```
 
@@ -103,21 +113,19 @@ out <- prepDocuments(processed$documents, processed$vocab, processed$meta, lower
 
 ```
 
-# ```{r}
+```{r}
 # #search no. of topics
 # kResult <- searchK(out$documents, out$vocab, K=c(10,100), prevalence=~company_search+s(year),
 #                    data=out$meta)
-# ```
-# 
-# ```{r}
+
 # png(file.path(dir, "/plots/stm_searchK.png"), width = 1000, height = 800)
 # plot(kResult)
 # dev.off()
-# ```
+```
 
 
 ```{r}
-gafamfit <- stm(out$documents, out$vocab, K=15, prevalence=~speaker+s(year), 
+gafamfit <- stm(out$documents, out$vocab, K=12, prevalence=~speaker+s(year), 
                        max.em.its=75, data=out$meta, init.type="Spectral", 
                        seed=28)
 ```
@@ -138,65 +146,55 @@ dev.off()
 
 plot.STM(gafamfit,type="summary", n = 10 ,text.cex=1.2, width=80, height=90, xlim=c(0,.7))
 plot.STM(gafamfit,type="summary", label="frex", n = 10 ,text.cex=1.2, width=80, height=90, xlim=c(0,.7))
-plot(gafamfit, type="labels", topics=c(12,5,1,7),label = "frex")
+plot(gafamfit, type="labels", topics=c(12,5,7,1),label = "frex")
 ```
+
 ## Topic Correlation
 
 ```{r}
 # correlation of the topics
 corr <- topicCorr(gafamfit)
 
-# png(file.path(dir, "/plots/stm_topic_correlation.png"), width = 1000, height = 800)
-# plot(corr)
-# dev.off()
+png(file.path(dir, "/plots/stm_topic_correlation.png"), width = 1000, height = 800)
+plot(corr)
+dev.off()
 
 plot(corr)
-plot(gafamfit, type="labels", topics=c(15,3,6,2,13), label="frex")
-plot(gafamfit, type="labels", topics=c(1,9,10), label="frex")
+plot(gafamfit, type="labels", topics=c(9,1,11), label="frex")
+plot(gafamfit, type="labels", topics=c(4,10,5), label="frex")
 ```
-
-```{r}
-# rename speaker labels
-speaker <- as.data.frame(table(out$meta$speaker))
-write.csv(speaker, file.path(dir, "data/EUCommissionSpeeches/commissioners.csv"))
-
-```
-
 
 ## Doc-topic charts
 ```{r}
+t <- read_excel(file.path(dir, "data/topics.xlsx")) 
 doc_topic <- tidy(gafamfit, matrix = "theta") %>%
-  left_join(out$meta, by="document")
+  left_join(out$meta, by="document") %>%
+  left_join(t, by = "topic")
 
 # topic by speaker
 share_speaker <- doc_topic %>% 
- group_by(speaker, topic) %>% 
+ group_by(speaker_id,speaker, speaker_lbl, topic, main_topic) %>% 
  summarise(gamma = sum(gamma)) %>% 
- group_by(speaker) %>% 
+ group_by(speaker_id, speaker, speaker_lbl) %>% 
  mutate(share = gamma/sum(gamma)) %>% 
  ungroup() %>% 
  mutate(topic = factor(topic))
 
-plot1 <- ggplot(share_speaker, aes(x = topic, y = speaker, fill = share)) +
+plot1 <- ggplot(share_speaker, aes(x = main_topic, y = speaker_lbl, fill = share)) +
   geom_tile() +
   scale_fill_gradient2(high = "darkred", labels=scales::label_percent(accuracy = 1L)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1),
-        panel.grid = element_blank(),
-        plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
-        plot.subtitle = element_text(size = 10, face = "italic", 
-                                     hjust = 0.5, margin = margin(b = 15)),
-        plot.caption = element_text(size = 10, hjust = 0),
-        axis.title.y.left = element_text(size = 12, margin = margin(r = 15)),
-        axis.title.x = element_text(size = 12, margin = margin(t = 15))) +
+  theme_custom() +
   labs(x = "Topics",
        y = "Speaker",
        fill = "% share",
        title = "Share of Topics by Speaker",
-       subtitle = "STM with 15 topics") 
+       subtitle = "STM with 12 topics") +
+#  theme(axis.text.x = element_text(hjust=1)) +#angle = 45, 
+  scale_x_discrete(labels = wrap_format(10))
 plot1
-# ggsave(filename=file.path(dir, "plots/stm_share_platforms.png"), plot=plot1, device="png", 
-#        width = 12, height = 7)
+
+ggsave(filename=file.path(dir, "plots/stm_share_speaker.png"), plot=plot1, device="png",
+       width = 12, height = 7)
 
 ```
 
@@ -204,66 +202,56 @@ plot1
 ```{r}
 # topic by year
 share_period <- doc_topic %>%
-  filter(year %in% c(2012:2022)) %>% 
-  group_by(year, topic) %>%
+  group_by(year, topic, main_topic) %>%
   summarise(gamma = sum(gamma)) %>%
   group_by(year) %>%
   mutate(year_share = gamma/sum(gamma)) %>%
   ungroup() %>%
   mutate(topic = factor(topic))
 
-plot2 <- ggplot(share_period, aes(x = topic, y = as.factor(year), fill = year_share)) +
+plot2 <- ggplot(share_period, aes(x = main_topic, y = as.factor(year), fill = year_share)) +
   geom_tile() +
   scale_fill_gradient2(high = "darkred", labels=scales::label_percent(accuracy = 1L)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1),
-        panel.grid = element_blank(),
-        plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
-        plot.subtitle = element_text(size = 10, face = "italic", 
-                                     hjust = 0.5, margin = margin(b = 15)),
-        plot.caption = element_text(size = 10, hjust = 0),
-        axis.title.y.left = element_text(size = 12, margin = margin(r = 15)),
-        axis.title.x = element_text(size = 12, margin = margin(t = 15))) +
+  theme_custom() +
   labs(x = "Topics",
        y = "Year",
        fill = "% share",
        title = "Share of Topics by Year",
-       subtitle = "STM with 15 topics") 
+       subtitle = "STM with 12 topics") +
+  scale_x_discrete(labels = wrap_format(10))
 plot2
-# ggsave(filename= file.path(dir, "plots/stm_share_year.png"), plot=plot2, device="png", 
-#        width = 12, height = 7)
+ggsave(filename= file.path(dir, "plots/stm_share_year.png"), plot=plot2, device="png",
+       width = 12, height = 7)
 
 ```
 
 ## Topic-term charts
-```{r}
-topic_term <- tidy(gafamfit, matrix = "beta")
+```{r, warning=F}
+topic_term <- tidy(gafamfit, matrix = "beta") %>%
+  left_join(t, by = "topic")
 
 term_share <- topic_term %>%
-  group_by(topic) %>%
+  group_by(topic, main_topic) %>%
   slice_max(beta, n = 10) %>% 
   ungroup() %>%
   arrange(topic, -beta)
 
 plot3 <-term_share %>%
       mutate(term = reorder_within(term, beta, topic)) %>%
-      ggplot(aes(beta, term, fill = "red")) +
+      ggplot(aes(beta, term, fill = "darkred")) +
       geom_bar(stat="identity", width = .5) +
-      facet_wrap(~ topic, scales = "free", ncol=5) + 
+      facet_wrap(~ main_topic, scales = "free", ncol=4) + 
       #xlim(0, 0.08) +
       scale_y_reordered() +
       labs(title = "STM") +
       scale_fill_identity() +
-      theme_test() +
-      theme(axis.text.y = element_text(size = 8),
-            axis.text.x = element_text(size = 8),
-            strip.text.x = element_text(size = 8)) +
+      theme_custom() +
     labs(y = "Term", x = "Term probability per topic") 
 
 plot3
 
-# ggsave(filename= file.path(dir, "plots/stm_term_share.png"), plot=plot3, device="png",
-#        width = 12, height = 7)
+ggsave(filename= file.path(dir, "plots/stm_topic_word_share.png"), plot=plot3, device="png",
+       width = 12, height = 7)
 ```
 
 
@@ -305,46 +293,7 @@ cloud(gafamfit, topic=7)
 
 ```
 
-
-
-
 ```{r}
 topicQuality(model=gafamfit, documents=out$documents)
 ```
 
-
-
-```{r}
-# english_words <- readLines("D:/Documents/R/win-library/4.1/hunspell/dict/en_US.dic") %>% 
-#   gsub("/.+", "", .)
-# 
-# dfmat <- df$text %>%
-#         tokens(remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE) %>%
-#         tokens_remove(pattern=stopwords("en")) %>%
-#         tokens_remove("[^[:alnum:]]") %>%
-#         tokens_keep(english_words, valuetype = "fixed") %>% 
-#         #tokens_remove(omit_words) %>%
-#         tokens_wordstem() %>%
-#         dfm()  %>%
-#         dfm_trim(min_termfreq = 10) 
-# 
-# dfm_stm <- convert(dfmat, to = "stm")
-
-# plotRemoved(dfm_stm$documents, lower.thresh=seq(1,200, by=100))
-# 
-# 
-# model <- stm(documents = dfm_stm$documents,
-#            vocab = dfm_stm$vocab,
-#            K = 10,
-#            verbose = TRUE)
-
-```
-
-```{r}
-# labelTopics(model)
-# 
-# 
-# par(bty="n",col="#de2d26",lwd=3)
-# plot.STM(model,type="summary", label="frex", n = 3, main = "2020 Republicans", text.cex=.8, width=30, cex.main =.8)
-
-```
