@@ -1,0 +1,307 @@
+---
+title: "Emotionality Analysis"
+output: html_document
+date: '2022-11-29'
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE, 
+                      message = FALSE)
+```
+
+```{r, include = FALSE}
+pacman::p_load(tidyverse, readr, stringr, quanteda, quanteda.textstats, rvest, 
+               tibble, xml2, topicmodels, tidytext, stm, kableExtra, janitor,
+               readxl, lubridate, waterfalls)
+```
+
+```{r, include = FALSE}
+charts.theme <- theme(axis.title.y.left = element_text(size = 12, margin = margin(r = 15)),
+                      axis.title.y.right = element_text(size = 12, margin = margin(l = 15)),
+                      axis.title.x = element_text(size = 12, margin = margin(t = 15, b = 8)),
+                      axis.text.x = element_text(size = 12),
+                      axis.text.y = element_text(size = 12),
+                      axis.ticks = element_blank(),
+                      axis.line.x = element_line("transparent", size = 0.5), 
+                      axis.line.y = element_line("transparent", size = 0.5),
+                      panel.border = element_rect(color = "#a3a3a3", fill = "transparent"),
+                      panel.background = element_rect(fill = "white", color = "white"),
+                      panel.grid.major = element_line(color = "#d4d4d4", linetype = 2),
+                      plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+                      plot.subtitle = element_text(size = 10, face = "italic", hjust = 0.5, margin = margin(b = 15)),
+                      plot.caption = element_text(size = 10, hjust = 0, face = "italic", margin = margin(t = 10)),
+                      strip.background = element_rect(fill = "transparent"),
+                      strip.text = element_text(size = 12),
+                      legend.key=element_blank())
+```
+
+### I. Get main topics
+```{r}
+top_words <- term_share %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 1) %>% 
+  ungroup() %>%
+  arrange(topic)
+
+# assign topic based on top words
+main_topic <- c("Economy", "Digitalization", "Culture",
+            "Climate and Sustainability", "European Union", "Education", 
+            "Law and Justice", "Labor", "COVID-19 Recovery", "Energy", 
+            "Finance", "Global Development")
+
+topics_df <- cbind(top_words, as.data.frame(main_topic)) %>% 
+ select(topic, term, main_topic)
+
+# assign broad topic
+Economy <- c("Economy", "Labor", "Finance", "Digitalization")
+Society <- c("COVID-19 Recovery", "Education", "Culture", "Law and Justice")
+Energy_Climate <- c("Climate and Sustainability", "Energy")
+Foreign_Affairs <- c("European Union", "Global Development")
+
+topics_df <- topics_df %>% 
+ mutate(broad_topic = ifelse(main_topic %in% Economy, "Economy",
+                      ifelse(main_topic %in% Society, "Society",
+                      ifelse(main_topic %in% Energy_Climate, "Energy and Climate",
+                      ifelse(main_topic %in% Foreign_Affairs, "Foreign Affairs", NA)))))
+
+```
+
+```{r}
+# per document get highest prob of assignment to topic
+doc_emo <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1) %>% 
+  ungroup() %>%
+  arrange(document)
+
+doc_emo %>% 
+ group_by(topic) %>% 
+ summarise(counts = n())
+
+# time demeaned emotionality score
+year_ave <- doc_emo %>% 
+ group_by(year) %>% 
+ summarise(ave_main_own = mean(emotion_score_own_embedding_tfidf),
+           ave_affect_own = mean(affect_score_own_embedding_tfidf),
+           ave_cogni_own = mean(cognition_score_own_embedding_tfidf),
+           ave_main = mean(emotion_score_tfidf),
+           ave_affect = mean(affect_score_tfidf),
+           ave_cogni = mean(cognition_score_tfidf))
+
+# assign topic name
+topic_emo <- left_join(doc_emo, year_ave, by = "year") %>% 
+ mutate(emotion_score_own_tfidf_demeaned = emotion_score_own_embedding_tfidf - ave_main_own,
+        affect_score_own_tfidf_demeaned = affect_score_own_embedding_tfidf - ave_affect_own,
+        cognition_score_own_tfidf_demeaned = cognition_score_own_embedding_tfidf - ave_cogni_own,
+        emotion_score_tfidf_demeaned = emotion_score_tfidf - ave_main,
+        affect_score_tfidf_demeaned = affect_score_tfidf - ave_affect,
+        cognition_score_tfidf_demeaned = cognition_score_tfidf - ave_cogni) %>% 
+ left_join(topics_df, by = "topic")
+```
+
+### II. Plots
+##### A. Average time-demeaned emotion score by topic (main)
+```{r}
+plot1_df <- topic_emo %>% 
+ group_by(main_topic) %>% 
+ summarise(emotion_score_own_tfidf_demeaned = mean(emotion_score_own_tfidf_demeaned))
+
+plot1 <- ggplot(plot1_df, aes(y = emotion_score_own_tfidf_demeaned)) + 
+ geom_bar(position = "dodge", stat = "identity",
+          aes(x = fct_reorder(main_topic, emotion_score_own_tfidf_demeaned), 
+              fill = ifelse(emotion_score_own_tfidf_demeaned > 0, "+", "-"))) + 
+  scale_fill_manual(values = c("#ba0000", "#234075")) + 
+  xlab("") + 
+  ylab("Average Emotionality Score") + 
+  labs(title = "Average Emotionality Score by Topic",
+       subtitle = "Overall Emotionality, EU Commission Speeches",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.") + 
+  guides(fill = "none") + 
+  charts.theme + 
+  coord_flip()
+plot1
+
+ggsave(filename = file.path(dir, "plots/emo_topic_1a.png"), plot=plot1, device="png", 
+        width = 12, height = 7)
+```
+
+##### B. Average time-demeaned emotion score by topic (affective)
+```{r}
+plot2_df <- topic_emo %>% 
+ group_by(main_topic) %>% 
+ summarise(affect_score_own_tfidf_demeaned = mean(affect_score_own_tfidf_demeaned))
+
+plot2 <- ggplot(plot2_df, aes(y = affect_score_own_tfidf_demeaned)) + 
+ geom_bar(position = "dodge", stat = "identity",
+          aes(x = fct_reorder(main_topic, affect_score_own_tfidf_demeaned), 
+              fill = ifelse(affect_score_own_tfidf_demeaned > 0, "+", "-"))) + 
+  scale_fill_manual(values = c("#ba0000", "#234075")) + 
+  xlab("") + 
+  ylab("Average Emotionality Score") + 
+  labs(title = "Average Emotionality Score by Topic",
+       subtitle = "Affective Emotionality, EU Commission Speeches",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.") + 
+  guides(fill = "none") + 
+  charts.theme + 
+  coord_flip()
+plot2
+
+ggsave(filename = file.path(dir, "plots/emo_topic_1b.png"), plot=plot2, device="png", 
+        width = 12, height = 7)
+```
+
+##### C. Average time-demeaned emotion score by topic (cognitive)
+```{r}
+plot3_df <- topic_emo %>% 
+ group_by(main_topic) %>% 
+ summarise(cognition_score_own_tfidf_demeaned = mean(cognition_score_own_tfidf_demeaned))
+
+plot3 <- ggplot(plot3_df, aes(y = cognition_score_own_tfidf_demeaned)) + 
+ geom_bar(position = "dodge", stat = "identity",
+          aes(x = fct_reorder(main_topic, cognition_score_own_tfidf_demeaned), 
+              fill = ifelse(cognition_score_own_tfidf_demeaned > 0, "+", "-"))) + 
+  scale_fill_manual(values = c("#ba0000", "#234075")) + 
+  xlab("") + 
+  ylab("Average Emotionality Score") + 
+  labs(title = "Average Emotionality Score by Topic",
+       subtitle = "Affective Emotionality, EU Commission Speeches",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.") + 
+  guides(fill = "none") + 
+  charts.theme + 
+  coord_flip()
+plot3
+
+ggsave(filename = file.path(dir, "plots/emo_topic_1c.png"), plot=plot3, device="png", 
+        width = 12, height = 7)
+```
+
+##### D. Emotionality score by party leanings
+```{r}
+speakers <- read_excel(paste0(dir, "/data/ChapelHillExpertSurvey/speaker_party_matching.xlsx")) %>% 
+ mutate(speaker_id = as.integer(speaker_id))
+
+plot4_df <- topic_emo %>% 
+ group_by(speaker_id) %>% 
+ summarise(affect_score_own_tfidf_demeaned = mean(affect_score_own_tfidf_demeaned),
+           lrgen = mean(lrgen)) %>% 
+ mutate(emotion_scaled = scales::rescale(affect_score_own_tfidf_demeaned, to = c(-1,1)),
+        lrgen_scaled = scales::rescale(lrgen, to = c(-1,1))) %>% 
+ left_join(speakers, ., by = "speaker_id")
+
+plot4 <- ggplot(plot4_df, aes(x = lrgen_scaled, y = emotion_scaled)) + 
+  geom_point(aes(color = gender), size = 5, alpha = 0.9) + 
+  geom_vline(xintercept = 0, size = 0.3) + 
+  geom_hline(yintercept = 0, size = 0.3) + 
+  scale_color_manual(values = c("#ba0000", "#234075")) + 
+  charts.theme + 
+  xlab("Party Ideology") + 
+  ylab("Emotionality") + 
+  labs(title = "Affective Emotionality and Party Ideology",
+       subtitle = "by gender of speaker",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.",  
+       color = "") + 
+ coord_flip()
+plot4
+
+ggsave(filename = file.path(dir, "plots/emo_topic_2.png"), plot=plot4, device="png", 
+        width = 12, height = 7)
+```
+
+##### E. Historical emotionality by topics
+```{r}
+plot5_df <- topic_emo %>% 
+    group_by(year, main_topic) %>% 
+    summarise(emotion_score_own_tfidf_demeaned = mean(emotion_score_own_tfidf_demeaned)) %>% 
+    filter(year %in% c(2014, 2018, 2022)) %>% 
+    pivot_wider(names_from = year, values_from = emotion_score_own_tfidf_demeaned) %>% 
+    mutate(increase = ifelse(`2022` > `2014`, "increase", "decrease"),
+           increase2 = ifelse(`2022` > `2018`, "increase", "decrease")) %>% 
+    pivot_longer(cols = `2014`:`2022`, names_to = "year") %>% 
+    filter(!is.na(increase))
+
+
+plot5 <- ggplot(plot5_df, aes(x = fct_rev(main_topic), y = value)) + 
+  geom_segment(data = plot5_df %>% pivot_wider(names_from = year, values_from = value),
+               aes(x = fct_rev(main_topic), xend = fct_rev(main_topic), 
+                   y = `2014`, yend = `2022`,
+                   color = increase), 
+               size = 1) +
+  geom_segment(data = plot5_df %>% pivot_wider(names_from = year, values_from = value),
+               aes(x = fct_rev(main_topic), xend = fct_rev(main_topic), 
+                   y = `2018`, yend = `2022`,
+                   color = increase2), 
+               size = 1) +
+  geom_point(aes(fill = as.character(year)), size = 5, shape = "circle filled", color = "transparent") + 
+  scale_fill_manual(values = c("#6dcff6", "#00a1cb", "#007db7")) + 
+  scale_color_manual(values = c("#e9532b", "#8dc63f")) + 
+  #scale_size_manual(values = c(0.5, 0.6)) + 
+  #scale_alpha_manual(values = c(0.6, 1)) + 
+  #scale_linetype_manual(values = c(2, 1)) + 
+  #scale_x_date(date_breaks = "1 month", date_labels =  "%b %Y") + 
+  charts.theme + 
+  xlab("") + 
+  ylab("Emotionality") + 
+  labs(title = "Average Emotionality by Topic",
+       subtitle = "2014, 2018, 2022",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.",  
+       fill = "", color = "") + 
+ coord_flip()
+plot5
+
+ggsave(filename = file.path(dir, "plots/emo_topic_4.png"), plot=plot5, device="png", 
+        width = 12, height = 7)
+```
+
+
+##### F. Cumulative Emotionality of Climate Topics
+```{r}
+plot6_df <- topic_emo %>% 
+    mutate(date = as.Date(date, "%Y-%m-%d"), 
+           month = strftime(date, "%Y-%m")) %>% 
+    filter(broad_topic == "Energy and Climate") %>% 
+    group_by(date) %>% 
+    summarise(emotion_score_own_tfidf_demeaned = mean(emotion_score_own_tfidf_demeaned)) %>% 
+    select(date, emotion_score_own_tfidf_demeaned) %>% 
+    mutate(fill = ifelse(emotion_score_own_tfidf_demeaned >= 0, "#1046b1", "#d1241a"))
+
+plot6_df$date <- factor(plot6_df$date)
+
+plot6 <- waterfall(plot6_df, 
+                rect_width = 0.8, 
+                rect_border = NA, 
+                rect_text_labels = rep(NA, nrow(plot6_df)),
+                draw_axis.x = "none",
+                fill_by_sign = FALSE, 
+                fill_colours = plot6_df$fill) + 
+  geom_hline(yintercept = 0, color = "gray50", size = .5, linetype = "dashed") + 
+  scale_y_continuous(name = "Emotionality") +
+  scale_x_discrete(breaks = c("2015-01-26", "2016-01-26", "2017-03-08", "2018-04-10", "2019-10-18",
+                              "2020-10-14", "2021-09-07", "2022-09-14"),
+                   labels = c("2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022")) +
+  labs(title = "Cumulative Emotionality of Climate & Energy Speeches",
+       subtitle = "2014 - 2022",
+       caption = "Topics based on STM. Emotionality score based on word embeddings learned from text.
+Emotionality score is demeaned by the average level of emotionality in each year.") + 
+  charts.theme + 
+  theme(axis.title = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 12, margin = margin(0, 10, 0, 0)),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 11),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "gray97"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+plot6
+
+ggsave(filename = file.path(dir, "plots/emo_topic_5.png"), plot=plot6, device="png", 
+        width = 12, height = 7)
+```
+
