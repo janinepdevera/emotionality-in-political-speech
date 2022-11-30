@@ -1,0 +1,385 @@
+---
+title: "Plots"
+author: 
+date: 
+output:
+  html_document:
+    toc: yes
+    keep_md: yes
+    df_print: kable
+    number_sections: no
+    highlight: tango
+    theme: lumen
+    toc_depth: 3
+    toc_float: yes
+    css: custom.css
+    self_contained: no
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+  
+<style>
+div.answer {background-color:#f3f0ff; border-radius: 5px; padding: 20px;}
+</style>
+
+
+```{r, include = F}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      error = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = NA)
+```
+
+<br>
+
+***
+
+```{r setup, include = T}
+# loading packages
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(quanteda, tidyr, purrr, ggplot2, 
+               tidytext, httr, rvest, readr, xml2, reshape2,
+               stringr, stringi, dplyr, tibble, lexicon,
+               NMF, topicmodels, LDAvis, stm, readxl, zoo, scales)
+```
+
+```{r}
+dir <- "D:/Desktop/02 Text as Data/Emotionality-in-Political-Speech-of-the-EU-Commission"
+
+raw <- read.csv(file.path(dir, "data/speeches_final.csv"), sep=";") 
+
+
+source(file.path(dir,"ggplot_themes.R"))
+```
+
+
+```{r}
+df <- raw %>%
+  filter(lang == "en") %>% #1787 english
+  filter(year != "None") %>% #1776 english with year
+  mutate(document=1:1776)
+
+df$year <- as.numeric(df$year)
+
+```
+
+```{r}
+df %>% 
+ group_by(year) %>%
+ summarise(counts = n()) %>% 
+ arrange(desc(year))
+
+df %>% 
+ group_by(speaker) %>%
+ summarise(counts = n()) %>%
+ arrange(desc(counts))
+
+```
+
+```{r}
+comm <- read_excel(file.path(dir, "data/EUCommissionSpeeches/commissioners_labels.xlsx")) %>%
+          select(-speaker)
+df <- left_join(df, comm, by = "speaker_id") %>%
+  mutate(plot_lbl = paste0(speaker_lbl, " (", committee_lbl, ")"))
+
+```
+
+## Time Series plots
+
+```{r}
+## Emotionality by Commisioner over years
+## average scores by month-year and commissioner
+
+# "emotion_score_own_embedding_tfidf"  
+# "affect_score_own_embedding_tfidf"   
+# "cognition_score_own_embedding_tfidf"
+
+p <- df %>%
+  mutate(my = format(as.Date(date), "%Y-%m")) %>%
+  group_by(speaker_id, speaker_lbl, gender, plot_lbl) %>%
+  mutate(speech_count = n()) %>% # no. of speeches per commissioner
+  ungroup() %>%
+  group_by(speaker_id, speaker_lbl, plot_lbl, gender, speech_count, my) %>%
+  summarise(Overall = mean(emotion_score_own_embedding_tfidf),
+            Affective = mean(affect_score_own_embedding_tfidf),
+            Cognitive = mean(cognition_score_own_embedding_tfidf), .groups = 'drop') %>%
+  group_by(speaker_id) %>%
+  mutate(count = n())
+
+p %>% group_by(speaker_lbl, speaker_id) %>%
+  summarise(mean=mean(speech_count)) %>%
+  arrange(-mean)
+
+
+rect <- data.frame (from  = c("2015-01-01", "2020-02-01", "2020-03-01", "2021-04-24"),
+                  to = c("2016-12-31", "2022-11-26", "2022-11-26", "2022-11-26"),
+                  fill = c("grey30", "grey30", "grey30", "grey30")) ##de2d26
+                  ## change of EC president "2019-12-01"
+```
+
+
+
+```{r, warning=F}
+# Overall
+p1 <- p %>%
+  filter(speaker_id %in% c(166,881,186,988)) %>%
+#  filter(count >=60) %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Overall, group=plot_lbl, color=plot_lbl)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Commissioner",
+       subtitle = "Monthly Average Overall Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#c51b8a", "#de2d26", "#2c7fb8", "#2ca25f")) +
+  ylim(0.7,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=.94, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=.85, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=.94, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=.95, size=3.5, hjust=0, label= "Ukraine War")
+
+p1 
+
+ggsave(filename= file.path(dir, "plots/comm_Overall_score.png"), plot=p1, device="png",
+       width = 12, height = 7)
+```
+
+```{r, warning=F}
+# Cognitive
+p1 <- p %>%
+  filter(speaker_id %in% c(166,881,186,988)) %>%
+#  filter(count >=60) %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Cognitive, group=plot_lbl, color=plot_lbl)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Commissioner",
+       subtitle = "Monthly Average Cognitive Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#c51b8a", "#de2d26", "#2c7fb8", "#2ca25f")) +
+  ylim(0,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=0.70, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=0.32, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=0.72, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=0.82, size=3.5, hjust=0, label= "Ukraine War")
+
+p1 
+
+ggsave(filename= file.path(dir, "plots/comm_Cognitive_score.png"), plot=p1, device="png",
+       width = 12, height = 7)
+```
+
+```{r, warning=F}
+# Affective
+p1 <- p %>%
+  filter(speaker_id %in% c(166,881,186,988)) %>%
+#  filter(count >=60) %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Affective, group=plot_lbl, color=plot_lbl)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Commissioner",
+       subtitle = "Monthly Average Affective Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#c51b8a", "#de2d26", "#2c7fb8", "#2ca25f")) +
+  ylim(0,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=0.54, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=0.16, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=0.56, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=0.66, size=3.5, hjust=0, label= "Ukraine War")
+
+p1 
+
+ggsave(filename= file.path(dir, "plots/comm_Affective_score.png"), plot=p1, device="png",
+       width = 12, height = 7)
+```
+
+```{r}
+pg <- p %>%
+  group_by(gender, my) %>%
+  summarise(Overall = mean(Overall),
+            Affective = mean(Affective),
+            Cognitive = mean(Cognitive), .groups = 'drop')
+
+```
+
+```{r, warning=F}
+# Overall by gender
+p2 <- pg %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Overall, group=gender, color=gender)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Gender",
+       subtitle = "Monthly Average Overall Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#de2d26", "#2c7fb8")) +
+  ylim(0.7,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=.94, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=.85, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=.94, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=.95, size=3.5, hjust=0, label= "Ukraine War")
+
+p2
+
+ggsave(filename= file.path(dir, "plots/gender_Overall_score.png"), plot=p2, device="png",
+       width = 12, height = 7)
+```
+
+```{r, warning=F}
+# Cognitive by gender
+p2 <- pg %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Cognitive, group=gender, color=gender)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Gender",
+       subtitle = "Monthly Average Cognitive Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#de2d26", "#2c7fb8")) +
+  ylim(0,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=0.70, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=0.32, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=0.72, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=0.82, size=3.5, hjust=0, label= "Ukraine War")
+
+p2
+
+ggsave(filename= file.path(dir, "plots/gender_Cognitive_score.png"), plot=p2, device="png",
+       width = 12, height = 7)
+```
+
+```{r, warning=F}
+# Affective by gender
+p2 <- pg %>%
+  ggplot(aes(x=as.Date(as.yearmon(my)) , y=Affective, group=gender, color=gender)) +
+  geom_rect(data = rect, inherit.aes=FALSE,
+              aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+                ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+  geom_line() + #aes(linetype=speaker_lbl)
+  labs(x = "Year",
+       y = "Average Score",
+       fill = "% share",
+       title = "Emotionality by Gender",
+       subtitle = "Monthly Average Affective Emotionality Score 2014 to 2022") +
+  scale_color_manual(labels = wrap_format(25), values = c("#de2d26", "#2c7fb8")) +
+  ylim(0,1) +
+  theme_custom() +
+  theme(legend.title=element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.text=element_text(size=9)) +
+  annotate("text", x=as.Date("2015-01-01"), y=0.54, size=3.5, hjust=0, label= "Migrant Crisis") +
+  annotate("text", x=as.Date("2020-02-01"), y=0.16, size=3.5, hjust=0, label= "Brexit") +
+  annotate("text", x=as.Date("2020-03-01"), y=0.56, size=3.5, hjust=0, label= "COVID-19") +
+  annotate("text", x=as.Date("2021-04-24"), y=0.66, size=3.5, hjust=0, label= "Ukraine War")
+
+p1 
+
+ggsave(filename= file.path(dir, "plots/gender_Affective_score.png"), plot=p2, device="png",
+       width = 12, height = 7)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+lrgen - left right score from 0 to 10; 
+lrecon - left-right for economic topics
+eu_position - how much in favour of the European integration a party is (whether they like the idea of an EU or not)
+
+# ```{r, warning=F}
+# ### loop
+# for (i in c("Cognitive", "Affective")) { #colnames(p[6:8])
+# pc<- p %>%
+#     filter(speaker_id %in% c(166,881,186,988))
+#   #  filter(count >=60) %>%
+# p1 <- ggplot(data=pc,aes(x=as.Date(as.yearmon(my)) , y=pc[[i]], group=plot_lbl, color=plot_lbl)) +
+#     geom_rect(data = rect, inherit.aes=FALSE,
+#                 aes(xmin=as.Date(`from`), xmax=as.Date(`to`),
+#                   ymin=-Inf, ymax=Inf),fill=rect$fill, alpha=0.1) +
+#     geom_line() + #aes(linetype=speaker_lbl)
+#     labs(x = "Year",
+#          y = "Average Score",
+#          fill = "% share",
+#          title = "Emotionality by Commissioner",
+#          subtitle = paste0("Monthly Average ", i," Emotionality Score 2014 to 2022")) +
+#     scale_color_manual(labels = wrap_format(25), values = c("#c51b8a", "#de2d26", "#2c7fb8", "#2ca25f")) +
+#     ylim(0,1) +
+#     theme_custom() +
+#     theme(legend.title=element_blank(),
+#           legend.background = element_blank(),
+#           legend.box.background = element_blank(),
+#           legend.key = element_blank()) +
+#     annotate("text", x=as.Date("2015-01-01"), y=0.70, size=3, hjust=0, label= "Migrant Crisis") +
+#     annotate("text", x=as.Date("2020-02-01"), y=0.32, size=3, hjust=0, label= "Brexit") +
+#     annotate("text", x=as.Date("2020-03-01"), y=0.72, size=3, hjust=0, label= "COVID-19") +
+#     annotate("text", x=as.Date("2021-04-24"), y=0.82, size=3, hjust=0, label= "Ukraine War")
+#   
+#   p1 
+#   
+#   ggsave(filename= file.path(dir, paste0("plots/",i, "_score_comm.png")), plot=p1, device="png",
+#          width = 12, height = 7)
+# }
+
+```
+
