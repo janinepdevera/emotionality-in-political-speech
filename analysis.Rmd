@@ -70,8 +70,7 @@ speeches %>%
 
 ### Count of speeches during 2020
 
-```{r}
-## General Time Series
+
 
 ```{r}
 speeches %>% 
@@ -124,10 +123,15 @@ speeches %>%
   ungroup() %>% 
   pivot_longer(-date, names_to = "measure", values_to = "value") %>% 
   filter(measure %in% c('cognition_score_own_embedding_tfidf', 'affect_score_own_embedding_tfidf')) %>% 
+  mutate(measure = if_else(measure == 'cognition_score_own_embedding_tfidf', 'Cognition Score', 'Affect Score')) %>%
+  mutate(
+    president = if_else(date < "2019-12-01", "Juncker", "von der Leyen")
+  ) %>% 
   ggplot(aes(
     x = date,
     y = value,
-    color = measure
+    color = measure,
+    shape = president
   )) +
   geom_line() +
   labs(
@@ -137,13 +141,59 @@ speeches %>%
     x = "Time",
     y = "Score",
     color = "Measure"
-    
   ) + 
+  annotate("rect", fill = "grey", alpha = 0.5, 
+        xmin = as.Date("2019-12-01"), xmax = as.Date("2022-11-26"),
+        ymin = -Inf, ymax = Inf) +
+  annotate("text", x = as.Date("2019-12-01"), y = 0.65, label = "v. d. Leyen", size = 6) +
   scale_color_brewer(palette = "Dark2") +
+  geom_smooth(method = "lm") +
   theme_custom()
 ```
 
-### Focus: Juli 2021: Three Green Deel Proposals and Massacre Speech by von der Leyen
+```{r}
+over_time <- speeches %>% 
+  group_by(
+    date = lubridate::floor_date(date, 'month')
+  ) %>% 
+  
+  select(date, 
+         emotion_score, 
+         emotion_score_own_embedding, 
+         emotion_score_own_embedding_tfidf,
+         emotion_score_tfidf,
+         affect_score,
+         affect_score_own_embedding,
+         affect_score_own_embedding_tfidf,
+         affect_score_tfidf,
+         cognition_score,
+         cognition_score_own_embedding,
+         cognition_score_own_embedding_tfidf,
+         cognition_score_tfidf)  %>% 
+  summarize_all(
+    mean
+  ) %>%  
+  ungroup() %>% 
+  pivot_longer(-date, names_to = "measure", values_to = "value") %>% 
+  filter(measure %in% c('cognition_score_own_embedding_tfidf', 'affect_score_own_embedding_tfidf')) %>% 
+  mutate(measure = if_else(measure == 'cognition_score_own_embedding_tfidf', 'Cognition Score', 'Affect Score')) %>% 
+  mutate(
+    president = if_else(date < "2019-12-01", "Juncker", "von der Leyen")
+  )
+
+
+qplot(
+  x = date,
+  y = value,
+  color = measure,
+  shape = president,
+  data = over_time,
+  geom=c("point", "smooth"))
+```
+
+
+
+### Focus: Juli / August 2021: Afghanistan Coup
 
 ```{r}
 speeches %>% 
@@ -173,12 +223,22 @@ speeches %>%
   ungroup() %>% 
   pivot_longer(-date, names_to = "measure", values_to = "value") %>% 
   filter(measure %in% c('cognition_score_own_embedding_tfidf', 'affect_score_own_embedding_tfidf')) %>% 
+  mutate(measure = if_else(measure == 'cognition_score_own_embedding_tfidf', 'Cognition Score', 'Affect Score')) %>% 
   ggplot(aes(
     x = date,
     y = value,
     color = measure
   )) +
-  geom_line() +
+  geom_line(size = 0.7) +
+  labs(
+    title = "Affect and Cognition Scores in 2021",
+    subtitle = "Lines are depicting the mean monthly scores over all speeches",
+    caption = "Source: Own illustration",
+    x = "Date",
+    y = "Score",
+    color = "Measure"
+  ) +
+  scale_color_brewer(palette = "Dark2") +
   theme_custom()
 ```
 
@@ -213,16 +273,14 @@ speeches %>%
 ## Regression Model (Gender, Ideologoy, EU Position)
 
 ```{r}
-sex <- lm(emotion_score_own_embedding~sex, data=speeches)
+sex <- lm(scale(emotion_score_own_embedding)~sex, data=speeches)
 
-eu_pos <-lm(emotion_score_own_embedding~eu_position, data=speeches)
+lr <- lm(scale(emotion_score_own_embedding)~scale(lrgen), data=speeches)
 
-lr <- lm(emotion_score_own_embedding~lrgen, data=speeches)
-
-complete <- lm(emotion_score_own_embedding~ sex + eu_position + lrgen, data=speeches)
+complete <- lm(scale(emotion_score_own_embedding)~ sex + scale(lrgen), data=speeches)
 
 
-stargazer(sex, eu_pos, lr, complete, out = "regression.png",
+stargazer(sex, lr, complete, out = "regression.html",
           dep.var.caption = "Emotionality Score",
           dep.var.labels = "")
 ```

@@ -1,4 +1,4 @@
-theme_custom <- function (base_size = 8, base_family = "Roboto Condensed") {
+theme_custom <- function (base_size = 12, base_family = "Roboto Condensed") {
   half_line <- base_size/2
   theme(
     line = element_line(color = "black", size = .5,
@@ -44,7 +44,7 @@ theme_custom <- function (base_size = 8, base_family = "Roboto Condensed") {
     legend.spacing.x = NULL,
     legend.spacing.y = NULL,
     legend.margin = margin(.2, .2, .2, .2, "cm"),
-    legend.key = element_rect(fill = "gray95", color = "white"),
+    legend.key = element_rect(color = NA),
     legend.key.size = unit(1.2, "lines"),
     legend.key.height = NULL,
     legend.key.width = NULL,
