@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 theme_custom <- function (base_size = 12, base_family = "Roboto Condensed") {
   half_line <- base_size/2
   theme(
@@ -99,3 +100,5 @@ theme_custom <- function (base_size = 12, base_family = "Roboto Condensed") {
     complete = TRUE
   )
 }
+=======
+>>>>>>> c1343e3cff498a6ff2a532e3971889988b50636e
